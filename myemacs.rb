@@ -2,44 +2,44 @@ require "formula"
 
 class Myemacs < Formula
   homepage "https://www.gnu.org/software/emacs/"
-  url "http://ftpmirror.gnu.org/emacs/emacs-24.4.tar.xz"
-  mirror "https://ftp.gnu.org/pub/gnu/emacs/emacs-24.4.tar.xz"
-  sha256 "47e391170db4ca0a3c724530c7050655f6d573a711956b4cd84693c194a9d4fd"
+  url "http://ftpmirror.gnu.org/emacs/emacs-24.5.tar.xz"
+  mirror "https://ftp.gnu.org/gnu/emacs/emacs-24.5.tar.xz"
+  sha256 "dd47d71dd2a526cf6b47cb49af793ec2e26af69a0951cc40e43ae290eacfc34e"
 
-  option "cocoa", "Build a Cocoa version of emacs"
-  option "srgb", "Enable sRGB colors in the Cocoa version of emacs"
-  option "with-x", "Include X11 support"
-  option "use-git-head", "Use Savannah (faster) git mirror for HEAD builds"
-  option "keep-ctags", "Don't remove the ctags executable that emacs provides"
-  option "japanese", "Patch for Japanese input methods"
+  bottle do
+    sha256 "01d4fcc1d234b191849cd10524cd4a987786ee533af5e8b94cbfb1f25387973e" => :yosemite
+    sha256 "db50780fe2e249d68f353d3c1b80aef80d265cb4a726d2e224bfaad1e8632cb7" => :mavericks
+    sha256 "fc28dc93d42840b5483804a68de12a0840c7f78495be79f3912e4e41ae1d1455" => :mountain_lion
+  end
 
-  head do
-    if build.include? "use-git-head"
-      url "http://git.sv.gnu.org/r/emacs.git"
-    else
-      url "bzr://http://bzr.savannah.gnu.org/r/emacs/trunk"
-    end
-
+  devel do
+    url "http://git.sv.gnu.org/r/emacs.git", :branch => "emacs-24"
+    version "24.5-dev"
     depends_on "autoconf" => :build
     depends_on "automake" => :build
   end
 
-  stable do
-    if build.include? "cocoa"
-      depends_on "autoconf" => :build
-      depends_on "automake" => :build
-    end
-
-    # "--japanese" option:
-    # to apply a patch from MacEmacsJP for Japanese input methods
-    patch :p0 do
-      url "http://plamo.linet.gr.jp/~matsuki/mac/emacs-24.4-20140417-inline.patch"
-      sha1 "90456a6856c1e3a11ca10a73866ee1aea371aad4"
-    end if build.include? "cocoa" and build.include? "japanese"
+  head do
+    url "http://git.sv.gnu.org/r/emacs.git"
+    depends_on "autoconf" => :build
+    depends_on "automake" => :build
   end
 
+  # japanese patch
+  patch :p1 do
+    url "http://git.io/vkSWk"
+    sha1 "238128138b068c6711a7789a689ef87661636dc8"
+  end
+
+  option "with-cocoa", "Build a Cocoa version of emacs"
+  option "with-ctags", "Don't remove the ctags executable that emacs provides"
+
+  deprecated_option "cocoa" => "with-cocoa"
+  deprecated_option "keep-ctags" => "with-ctags"
+  deprecated_option "with-x" => "with-x11"
+
   depends_on "pkg-config" => :build
-  depends_on :x11 if build.with? "x"
+  depends_on :x11 => :optional
   depends_on "d-bus" => :optional
   depends_on "gnutls" => :optional
   depends_on "librsvg" => :optional
@@ -47,53 +47,48 @@ class Myemacs < Formula
   depends_on "mailutils" => :optional
   depends_on "glib" => :optional
 
+  # https://github.com/Homebrew/homebrew/issues/37803
+  if build.with? "x11"
+    depends_on "freetype" => :recommended
+    depends_on "fontconfig" => :recommended
+  end
+
   fails_with :llvm do
     build 2334
     cause "Duplicate symbol errors while linking."
   end
 
-  # Follow MacPorts and don't install ctags from Emacs. This allows Vim
-  # and Emacs and ctags to play together without violence.
-  def do_not_install_ctags
-    unless build.include? "keep-ctags"
-      (bin/"ctags").unlink
-      (man1/"ctags.1.gz").unlink
-    end
-  end
-
   def install
-    # HEAD builds blow up when built in parallel as of April 20 2012
-    ENV.deparallelize unless build.stable?
-
     args = ["--prefix=#{prefix}",
             "--enable-locallisppath=#{HOMEBREW_PREFIX}/share/emacs/site-lisp",
             "--infodir=#{info}/emacs"]
+
     args << "--with-file-notification=gfile" if build.with? "glib"
+
     if build.with? "d-bus"
       args << "--with-dbus"
     else
       args << "--without-dbus"
     end
+
     if build.with? "gnutls"
       args << "--with-gnutls"
     else
       args << "--without-gnutls"
     end
+
     args << "--with-rsvg" if build.with? "librsvg"
     args << "--with-imagemagick" if build.with? "imagemagick"
     args << "--without-popmail" if build.with? "mailutils"
 
-    system "./autogen.sh" unless build.stable?
+    system "./autogen.sh" if build.head? || build.devel?
 
-    if build.include? "cocoa"
+    if build.with? "cocoa"
       args << "--with-ns" << "--disable-ns-self-contained"
       system "./configure", *args
       system "make"
       system "make", "install"
       prefix.install "nextstep/Emacs.app"
-
-      # Don't cause ctags clash.
-      do_not_install_ctags
 
       # Replace the symlink with one that avoids starting Cocoa.
       (bin/"emacs").unlink # Kill the existing symlink
@@ -102,7 +97,7 @@ class Myemacs < Formula
         exec #{prefix}/Emacs.app/Contents/MacOS/Emacs -nw  "$@"
       EOS
     else
-      if build.with? "x"
+      if build.with? "x11"
         # These libs are not specified in xft's .pc. See:
         # https://trac.macports.org/browser/trunk/dports/editors/emacs/Portfile#L74
         # https://github.com/Homebrew/homebrew/issues/8156
@@ -116,24 +111,41 @@ class Myemacs < Formula
       system "./configure", *args
       system "make"
       system "make", "install"
+    end
 
-      # Don't cause ctags clash.
-      do_not_install_ctags
+    # Follow MacPorts and don't install ctags from Emacs. This allows Vim
+    # and Emacs and ctags to play together without violence.
+    if build.without? "ctags"
+      (bin/"ctags").unlink
+      (man1/"ctags.1.gz").unlink
     end
   end
 
   def caveats
-    s = ""
-    if build.include? "cocoa"
-      s += <<-EOS.undent
-        A command line wrapper for the cocoa app was installed to:
-         #{bin}/emacs
+    if build.with? "cocoa" then <<-EOS.undent
+      A command line wrapper for the cocoa app was installed to:
+        #{bin}/emacs
       EOS
-      if build.include? "srgb" and not build.stable?
-        s << "\nTo enable sRGB, use (setq ns-use-srgb-colorspace t)"
-      end
     end
-    return s
+  end
+
+  def plist; <<-EOS.undent
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>Label</key>
+      <string>#{plist_name}</string>
+      <key>ProgramArguments</key>
+      <array>
+        <string>#{opt_bin}/emacs</string>
+        <string>--daemon</string>
+      </array>
+      <key>RunAtLoad</key>
+      <true/>
+    </dict>
+    </plist>
+    EOS
   end
 
   test do

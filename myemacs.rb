@@ -2,22 +2,9 @@ require "formula"
 
 class Myemacs < Formula
   homepage "https://www.gnu.org/software/emacs/"
-  url "http://ftpmirror.gnu.org/emacs/emacs-24.5.tar.xz"
-  mirror "https://ftp.gnu.org/gnu/emacs/emacs-24.5.tar.xz"
-  sha256 "dd47d71dd2a526cf6b47cb49af793ec2e26af69a0951cc40e43ae290eacfc34e"
-
-  bottle do
-    sha256 "01d4fcc1d234b191849cd10524cd4a987786ee533af5e8b94cbfb1f25387973e" => :yosemite
-    sha256 "db50780fe2e249d68f353d3c1b80aef80d265cb4a726d2e224bfaad1e8632cb7" => :mavericks
-    sha256 "fc28dc93d42840b5483804a68de12a0840c7f78495be79f3912e4e41ae1d1455" => :mountain_lion
-  end
-
-  devel do
-    url "http://git.sv.gnu.org/r/emacs.git", :branch => "emacs-24"
-    version "24.5-dev"
-    depends_on "autoconf" => :build
-    depends_on "automake" => :build
-  end
+  url "http://ftpmirror.gnu.org/emacs/emacs-25.1.tar.xz"
+  mirror "http://ftpmirror.gnu.org/emacs/emacs-25.1.tar.xz"
+  sha256 "19f2798ee3bc26c95dca3303e7ab141e7ad65d6ea2b6945eeba4dbea7df48f33"
 
   head do
     url "http://git.sv.gnu.org/r/emacs.git"
@@ -27,8 +14,8 @@ class Myemacs < Formula
 
   # japanese patch
   patch :p1 do
-    url "http://git.io/vkSWk"
-    sha1 "238128138b068c6711a7789a689ef87661636dc8"
+    url "https://gist.githubusercontent.com/takaxp/f30f54663c08e257b8846cc68b37f09f/raw/bbf307d220b23ce0ccec766c3ee23852e71c80df/emacs-25.1-inline.patch"
+    sha256 "8d51a4622a77431c9a2610740feac3f84896d23bf064c350f45b1ade99c2504c"
   end
 
   option "with-cocoa", "Build a Cocoa version of emacs"
@@ -48,12 +35,6 @@ class Myemacs < Formula
   depends_on "glib" => :optional
   depends_on "autoconf" => :build
   depends_on "automake" => :build
-
-  # https://github.com/Homebrew/homebrew/issues/37803
-  if build.with? "x11"
-    depends_on "freetype" => :recommended
-    depends_on "fontconfig" => :recommended
-  end
 
   fails_with :llvm do
     build 2334
@@ -85,42 +66,15 @@ class Myemacs < Formula
 
     system "./autogen.sh" if build.head? || build.devel?
 
-    if build.with? "cocoa"
-      args << "--with-ns" << "--disable-ns-self-contained"
-      system "./configure", *args
-      system "make"
-      system "make", "install"
-      prefix.install "nextstep/Emacs.app"
+    args << "--with-ns"
+    args << "--disable-ns-self-contained"
+    args << "--without-x"
+    args << "--with-modules"
 
-      # Replace the symlink with one that avoids starting Cocoa.
-      (bin/"emacs").unlink # Kill the existing symlink
-      (bin/"emacs").write <<-EOS.undent
-        #!/bin/bash
-        exec #{prefix}/Emacs.app/Contents/MacOS/Emacs -nw  "$@"
-      EOS
-    else
-      if build.with? "x11"
-        # These libs are not specified in xft's .pc. See:
-        # https://trac.macports.org/browser/trunk/dports/editors/emacs/Portfile#L74
-        # https://github.com/Homebrew/homebrew/issues/8156
-        ENV.append "LDFLAGS", "-lfreetype -lfontconfig"
-        args << "--with-x"
-        args << "--with-gif=no" << "--with-tiff=no" << "--with-jpeg=no"
-      else
-        args << "--without-x"
-      end
-
-      system "./configure", *args
-      system "make"
-      system "make", "install"
-    end
-
-    # Follow MacPorts and don't install ctags from Emacs. This allows Vim
-    # and Emacs and ctags to play together without violence.
-    if build.without? "ctags"
-      (bin/"ctags").unlink
-      (man1/"ctags.1.gz").unlink
-    end
+    system "autogen.sh"
+    system "./configure", *args
+    system "make bootstrap -j1"
+    system "make install -j1"
   end
 
   def caveats

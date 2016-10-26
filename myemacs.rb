@@ -64,17 +64,37 @@ class Myemacs < Formula
     args << "--with-imagemagick" if build.with? "imagemagick"
     args << "--without-popmail" if build.with? "mailutils"
 
-    system "./autogen.sh" if build.head? || build.devel?
+    system "./autogen.sh"
 
-    args << "--with-ns"
-    args << "--disable-ns-self-contained"
-    args << "--without-x"
-    args << "--with-modules"
+    if build.with? "cocoa"
+      args << "--with-ns" << "--disable-ns-self-contained"
+      system "./configure", *args
+      system "make -j4"
+      system "make", "install"
+      prefix.install "nextstep/Emacs.app"
 
-    system "autogen.sh"
-    system "./configure", *args
-    system "make bootstrap -j1"
-    system "make install -j1"
+      # Replace the symlink with one that avoids starting Cocoa.
+      (bin/"emacs").unlink # Kill the existing symlink
+      (bin/"emacs").write <<-EOS.undent
+        #!/bin/bash
+        exec #{prefix}/Emacs.app/Contents/MacOS/Emacs -nw  "$@"
+      EOS
+    else
+      if build.with? "x11"
+        # These libs are not specified in xft's .pc. See:
+        # https://trac.macports.org/browser/trunk/dports/editors/emacs/Portfile#L74
+        # https://github.com/Homebrew/homebrew/issues/8156
+        ENV.append "LDFLAGS", "-lfreetype -lfontconfig"
+        args << "--with-x"
+        args << "--with-gif=no" << "--with-tiff=no" << "--with-jpeg=no"
+      else
+        args << "--without-x"
+      end
+
+      system "./configure", *args
+      system "make"
+      system "make", "install"
+    end
   end
 
   def caveats
